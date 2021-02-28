@@ -58,28 +58,38 @@ async function main() {
           title: 'DEI Panel'
         },
         {
+          start: '13:00',
+          end: '17:00',
+          room: 'Meetings - Hub',
+          title: 'Meetings with faculty',
+        },
+        {
+          start: '17:30',
+          end: '18:30',
+          room: 'Reception - Hub',
+          title: 'Department Reception',
+        },
+        {
           start: '18:30',
-          end: '21:00',
-          room: 'Panel',
-          title: 'DEI Panel'
+          end: '23:59',
+          room: 'Evening Social - Hub',
+          title: 'Social Events'
         }
       ]
     };
 
-
+    // TODO: switch this by day
     let todays_events = schedule.friday;
 
     //let now = DateTime.now();
+    let now = DateTime.fromISO('10:31');
 
-    let now = DateTime.fromISO('10:40');
-    let upcoming_events = todays_events.filter(event => {
-      let end = DateTime.fromISO(event.end);
-      return end > now;
-    });
+    let pivot = _.findIndex(todays_events, event => DateTime.fromISO(event.end) > now);
+    let prev = pivot > 0 ? todays_events[pivot - 1] : null;
+    let current = pivot != -1 ? todays_events[pivot] : null;
+    let next = pivot < todays_events.length - 1 ? todays_events[pivot + 1] : null;
 
-    let current = upcoming_events.length > 0 ? upcoming_events[0] : null;
-    let next = upcoming_events.length > 1 ? upcoming_events[1] : null;
-
+    // TODO: should be able to look these up via getRoomElements, but it currently returns empty
     let elements: {[key: string]: string} = {
       "Upcoming Event Preview": "scene_preview_elem_Q8O6AQoe",
       "Upcoming Event Count": "participant_count_elem_59t0tB1i",
@@ -88,7 +98,13 @@ async function main() {
       "Current Event Count": "participant_count_elem_ynaS4OZY",
       "Current Event Preview": "scene_preview_elem_xCDTq7OE",
       "Current Event Title": "text_elem_O0IvEjfN",
-    }
+
+      "Previous Event Preview": "scene_preview_elem_Y9A_ud1M",
+      "Previous Event Count": "participant_count_elem_quTJNWiy",
+      "Previous Event Title": "text_elem_QYgDRVH3",
+
+      "Controller": "iframe_elem_AMrais6H"
+    };
 
     let update = async (kind: string, event: any | null) => {
       if (event) {
@@ -108,7 +124,11 @@ async function main() {
       }
     };
 
-    return Promise.all([update("Current", current), update("Upcoming", next)]);
+    let p = ohyay.updateElement(
+      elements["Controller"],
+      {tags: {previous: prev != null, current: current != null, upcoming: next != null}});
+
+    await Promise.all([update("Previous", prev), update("Current", current), update("Upcoming", next), p]);
   }
 
   async function evening() {
@@ -143,28 +163,3 @@ window.addEventListener('message', ev => {
     main();
   }
 });
-
-/*
-   log(ohyay);   // see all available varibles/functions in DevTools
-   ohyay.logElementTypes(); // see all available element types in DevTools
-   ohyay.logElementTypeInfo('text'); // see all properties for a 'text' element in DevTools
-
-   ohyay.user.tags.newTag = true; // Add a tag to the current user
-
-   log(ohyay.currentSceneId); // log the current room ID
-   for (var sceneId in ohyay.scenes) { // loop over all rooms
-   var s = ohyay.scenes[sceneId];
-   log(s);
-   s.title = s.title + ' [modified by script]'; // modify the room title of all rooms
-
-   for (var elementId in s.elements) {
-   var e = s.elements[elementId];
-   log(e);
-   e.title = e.title + ' [modified by script]'; // modify the element title of all elements
-   }
-
-   var newEl = ohyay.addElementToScene(s, 'text'); // add a new text element to every room
-   newEl.text = 'hi';
-   }
-   ohyay.save(); // save changes to all scenes, elements, and the current user
- */
