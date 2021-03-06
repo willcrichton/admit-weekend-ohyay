@@ -5,6 +5,7 @@
     "strict": true,
     "jsx": "react",
     "lib": ["dom", "es2015"],
-    "esModuleInterop": true
-  }
+    "esModuleInterop": true,
+  },
+  "include": ["ohyay.d.ts", "src/*"]
 }

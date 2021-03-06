@@ -1,37 +1,27 @@
 import _ from 'lodash';
 import {DateTime} from 'luxon';
+import axios from 'axios';
+import ReactDOM from 'react-dom';
+import React from 'react';
 
-interface Expiration {
-  templateSceneId: string
-}
+let ohyay = window.ohyay;
 
-interface Room {
-  id: string
-  title: string
-  expiration?: Expiration
-}
-
-interface Ohyay {
-  getCurrentRoomId: () => Promise<string>;
-  getRooms: () => Promise<Room[]>;
-  getRoomElements: (id: string) => Promise<any[]>;
-  updateElement: (elementId: string, update: any) => Promise<boolean>;
-}
-
-declare var ohyay: Ohyay;
+let container_div = document.getElementById('container');
 
 async function main() {
   let current_room_id = await ohyay.getCurrentRoomId();
-  let rooms = await ohyay.getRooms();
+  let rooms: Room[] = await ohyay.getRooms();
 
-  let current_room = _.find(rooms, {id: current_room_id});
+  let current_room = _.find(rooms, {id: current_room_id}) as Room|undefined;
   if (!current_room) {
     throw `Room id ${current_room_id} does not exist`;
   }
 
+  let current_room_elements = await ohyay.getRoomElements(current_room_id);
+
   let callbacks: {[name: string]: () => void} = {
     "Map": map,
-    "Evening Social - Hub": evening
+    "Reception - Hub": reception,
   };
 
   callbacks[current_room.title]();
@@ -54,7 +44,7 @@ async function main() {
         {
           start: '12:00',
           end: '13:00',
-          room: 'Panel',
+          room: 'Panel - DEI',
           title: 'DEI Panel'
         },
         {
@@ -75,91 +65,222 @@ async function main() {
           room: 'Evening Social - Hub',
           title: 'Social Events'
         }
-      ]
+      ],
+      saturday: [
+        {
+          start: '10:00',
+          end: '11:00',
+          room: 'Panel - Student Q&A',
+          title: 'Student Q&A'
+        },
+        {
+          start: '11:00',
+          end: '11:30',
+          room: 'Housing Tour - Hub',
+          title: 'Housing Tour'
+        },
+        {
+          start: '12:00',
+          end: '13:00',
+          room: 'Women in CS Social',
+          title: 'Women in CS Social'
+        },
+        {
+          start: '13:00',
+          end: '17:00',
+          room: 'Meetings - Hub',
+          title: 'Meetings with faculty',
+        },
+        {
+          start: '17:00',
+          end: '18:00',
+          room: 'Inclusion in CS Social',
+          title: 'Inclusion in CS Social',
+        },
+        {
+          start: '18:00',
+          end: '23:59',
+          room: 'Saturday Social - Hub',
+          title: 'Research Area Socials'
+        }
+      ],
     };
 
-    // TODO: switch this by day
-    let todays_events = schedule.friday;
+    let parse_time = (s: string) => DateTime.fromISO(s, {zone: 'America/Los_Angeles'});
 
-    //let now = DateTime.now();
-    let now = DateTime.fromISO('10:31');
+    let response = await axios.get('https://mindover.computer/api/time');
+    let now = DateTime.fromSeconds(response.data).setZone('America/Los_Angeles');
+    //let now = parse_time('18:01');
 
-    let pivot = _.findIndex(todays_events, event => DateTime.fromISO(event.end) > now);
+    let todays_events = now.weekdayLong == "Saturday" ? schedule.saturday : schedule.friday;
+
+    let pivot = _.findIndex(todays_events, event => parse_time(event.end) > now);
     let prev = pivot > 0 ? todays_events[pivot - 1] : null;
-    let current = pivot != -1 ? todays_events[pivot] : null;
-    let next = pivot < todays_events.length - 1 ? todays_events[pivot + 1] : null;
 
-    // TODO: should be able to look these up via getRoomElements, but it currently returns empty
-    let elements: {[key: string]: string} = {
-      "Upcoming Event Preview": "scene_preview_elem_Q8O6AQoe",
-      "Upcoming Event Count": "participant_count_elem_59t0tB1i",
-      "Upcoming Event Title": "text_elem_tbAgI2Tt",
+    let current, next;
+    if (pivot != -1 && now < parse_time(todays_events[pivot].start)) {
+      current = null;
+      next = todays_events[pivot];
+    } else {
+      current = pivot != -1 ? todays_events[pivot] : null;
+      next = pivot < todays_events.length - 1 ? todays_events[pivot + 1] : null;
+    }
 
-      "Current Event Count": "participant_count_elem_ynaS4OZY",
-      "Current Event Preview": "scene_preview_elem_xCDTq7OE",
-      "Current Event Title": "text_elem_O0IvEjfN",
+    let get_element_id = (title: string) => {
+      let elt = _.find(current_room_elements, {title}) as Element | undefined;
+      if (!elt) {
+        throw `Could not find element with title ${title}`;
+      }
 
-      "Previous Event Preview": "scene_preview_elem_Y9A_ud1M",
-      "Previous Event Count": "participant_count_elem_quTJNWiy",
-      "Previous Event Title": "text_elem_QYgDRVH3",
-
-      "Controller": "iframe_elem_AMrais6H"
+      return elt.id;
     };
 
     let update = async (kind: string, event: any | null) => {
-      if (event) {
+      let promise1, promise2, promise3;
+
+      if (event == null) {
+        promise1 = ohyay.updateElement(get_element_id(`${kind} Event Preview`), {scenePreviewId: ''});
+        promise2 = ohyay.updateElement(get_element_id(`${kind} Event Count`), {sceneIds: {}});
+        promise3 = ohyay.updateElement(get_element_id(`${kind} Event Title`), {text: ''});
+      } else {
         let preview_room = _.find(rooms, {title: event.room});
         if (!preview_room) {
           throw `Invalid room id ${event.room}`;
         }
 
-        let promise1 = ohyay.updateElement(elements[`${kind} Event Preview`], {scenePreviewId: preview_room.id});
-        let promise2 = ohyay.updateElement(elements[`${kind} Event Count`], {sceneIds: {[preview_room.id]: true}});
-        let promise3 = ohyay.updateElement(elements[`${kind} Event Title`], {text: event.title});
+        promise1 = ohyay.updateElement(get_element_id(`${kind} Event Preview`), {scenePreviewId: preview_room.id});
+        promise2 = ohyay.updateElement(get_element_id(`${kind} Event Count`), {sceneIds: {[preview_room.id]: true}});
+        promise3 = ohyay.updateElement(get_element_id(`${kind} Event Title`), {text: event.title});
+      }
 
-        let [response1, response2, response3] = await Promise.all([promise1, promise2, promise3]);
-        if (!response1 || !response2 || !response3) {
-          throw `Update to preview failed`;
-        }
+      let [response1, response2, response3] = await Promise.all([promise1, promise2, promise3]);
+      if (!response1 || !response2 || !response3) {
+        throw `Update to preview failed`;
       }
     };
 
     let p = ohyay.updateElement(
-      elements["Controller"],
+      get_element_id("Controller"),
       {tags: {previous: prev != null, current: current != null, upcoming: next != null}});
 
     await Promise.all([update("Previous", prev), update("Current", current), update("Upcoming", next), p]);
   }
 
-  async function evening() {
-    let elements = await ohyay.getRoomElements(current_room_id);
+  async function reception() {
+    let generate_seats = async () => {
+      let get_tagged_elts = (tag: string) => {
+        let elts = _.filter(current_room_elements, elt => elt.tags && elt.tags[tag]);
+        if (elts.length > 0) {
+          return elts;
+        } else {
+          throw `Tag missing: ${tag}`;
+        }
+      };
 
-    rooms
-      .filter(room => room.expiration !== undefined)
-      .forEach(room => {
-        let template_id = room.expiration!.templateSceneId;
-        let template = _.find(rooms, {id: template_id});
-        if (!template) {
-          throw `Template ${template_id} could not be found`;
-        }
-        if (template.title.includes("Skribbl")) {
-          let preview = {
-            scenePreviewId: room.id,
-            bounds: {
-              x: 160.,
-              y: 450.,
-              w: 200.,
-              h: 120.
-            }
+      let static_template = get_tagged_elts("static_button_template");
+      let dynamic_template = get_tagged_elts("dynamic_button_template");
+
+      let stamp_instance = async (template: any, pos: {x: number, y: number}, params: any) => {
+        let ox = _.chain(template).map(elt => elt.bounds.x).min().value();
+        let oy = _.chain(template).map(elt => elt.bounds.y).min().value();
+
+        await Promise.all(template.map((elt: AnyElement) => {
+          let bounds = {
+            x: elt.bounds.x - ox + pos.x,
+            y: elt.bounds.y - oy + pos.y
           };
-          //ohyay.addElement(hub.id, "scene_preview", preview);
-        }
-      });
+          let new_elt =
+            _.chain({})
+             .merge(elt)
+             .merge(params[elt.title] || {})
+             .merge({bounds, isNotesElement: false})
+             .value();
+          ohyay.addElement(current_room_id, new_elt.type, new_elt);
+        }));
+      };
+
+      let static_faculty = [
+        {
+          names: ['Dorsa Sadigh', 'Jeannette Bohg']
+        },
+        {
+          names: ['Clark Barrett', 'Sara Achour']
+        },
+        {
+          names: ['Alex Aiken', 'Dawson Engler']
+        },
+        {
+          names: ['Juan Carlos Niebles', 'Jiajun Wu']
+        },
+        {
+          names: ['Chris Piech', 'James Landay']
+        },
+        {
+          names: ['Dan Yamins', 'Noah Goodman']
+        },
+      ];
+
+      let ncols = 3;
+      let width = 165;
+      let height = 48;
+      let margin = 10;
+      let static_offset = {x: 61, y: 240};
+      let dynamic_offset = {x: 651, y: 240};
+      let dynamic_slots = 12;
+
+      let promises1 =
+        _.chain(static_faculty)
+         .chunk(ncols)
+         .map((chunk, row) =>
+           chunk.map((faculty, col) => {
+             let pos = {
+               x: (width + margin) * col + static_offset.x,
+               y: (height + margin) * row + static_offset.y
+             };
+             return stamp_instance(static_template, pos, {
+               Count: {
+                 tags: {static_button_template: false}
+               },
+               Faculty: {
+                 text: _.sortBy(faculty.names).join('\n'),
+                 tags: {static_button_template: false}
+               }
+             });
+         }))
+         .flatten()
+         .value();
+
+      let promises2 =
+        _.chain(_.range(dynamic_slots))
+         .chunk(ncols)
+         .map((chunk, row) =>
+           chunk.map((_, col) => {
+             let pos = {
+               x: (width + margin) * col + dynamic_offset.x,
+               y: (height + margin) * row + dynamic_offset.y
+             };
+             return stamp_instance(dynamic_template, pos, {
+               Count: {
+                 tags: {dynamic_button_template: false}
+               },
+               Faculty: {
+                 tags: {dynamic_button_template: false}
+               },
+               Background: {
+                 tags: {dynamic_button_template: false}
+               }
+             });
+         }))
+         .flatten()
+         .value();
+
+      await Promise.all(promises1.concat(promises2));
+    };
+
+    ReactDOM.render(<div>
+      <button onClick={generate_seats}>Generate seats</button>
+    </div>, container_div);
   }
 }
 
-window.addEventListener('message', ev => {
-  if (ev.source == window.parent && ev.data.type == 'addApis') {
-    main();
-  }
-});
+ohyay.setApiLoadedListener(main);
