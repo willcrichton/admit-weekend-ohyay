@@ -1,3 +1,5 @@
+// TODO #1: make participant count on events include transitive spaces
+
 import _ from 'lodash';
 import {DateTime} from 'luxon';
 import axios from 'axios';
@@ -20,7 +22,8 @@ async function main() {
   let current_room_elements = await ohyay.getRoomElements(current_room_id);
 
   let callbacks: {[name: string]: () => void} = {
-    "Map": map,
+    "Map - Events": map,
+    "Map - Main": map,
     "Reception - Hub": reception,
   };
 
@@ -58,12 +61,14 @@ async function main() {
           end: '18:30',
           room: 'Reception - Hub',
           title: 'Department Reception',
+          overlay: 'reception',
         },
         {
           start: '18:30',
           end: '23:59',
           room: 'Evening Social - Hub',
-          title: 'Social Events'
+          title: 'Social Events',
+          overlay: 'friday_social',
         }
       ],
       saturday: [
@@ -108,11 +113,11 @@ async function main() {
 
     let parse_time = (s: string) => DateTime.fromISO(s, {zone: 'America/Los_Angeles'});
 
-    let response = await axios.get('https://mindover.computer/api/time');
-    let now = DateTime.fromSeconds(response.data).setZone('America/Los_Angeles');
-    //let now = parse_time('18:01');
+    //let response = await axios.get('https://mindover.computer/api/time');
+    //let now = DateTime.fromSeconds(response.data).setZone('America/Los_Angeles');
+    let now = parse_time('16:31');
 
-    let todays_events = now.weekdayLong == "Saturday" ? schedule.saturday : schedule.friday;
+    let todays_events = now.weekdayLong == "Saturday" && false ? schedule.saturday : schedule.friday;
 
     let pivot = _.findIndex(todays_events, event => parse_time(event.end) > now);
     let prev = pivot > 0 ? todays_events[pivot - 1] : null;
@@ -136,12 +141,13 @@ async function main() {
     };
 
     let update = async (kind: string, event: any | null) => {
-      let promise1, promise2, promise3;
+      let promise1, promise2, promise3, promise4;
 
       if (event == null) {
         promise1 = ohyay.updateElement(get_element_id(`${kind} Event Preview`), {scenePreviewId: ''});
         promise2 = ohyay.updateElement(get_element_id(`${kind} Event Count`), {sceneIds: {}});
         promise3 = ohyay.updateElement(get_element_id(`${kind} Event Title`), {text: ''});
+        promise4 = ohyay.updateElement(get_element_id(`${kind} Event Button`), {tags: {show: false}});
       } else {
         let preview_room = _.find(rooms, {title: event.room});
         if (!preview_room) {
@@ -151,11 +157,48 @@ async function main() {
         promise1 = ohyay.updateElement(get_element_id(`${kind} Event Preview`), {scenePreviewId: preview_room.id});
         promise2 = ohyay.updateElement(get_element_id(`${kind} Event Count`), {sceneIds: {[preview_room.id]: true}});
         promise3 = ohyay.updateElement(get_element_id(`${kind} Event Title`), {text: event.title});
+
+        let button_id = get_element_id(`${kind} Event Button`);
+        if (event.overlay) {
+          let action = JSON.stringify({
+            id: button_id,
+            name: "Script for (button)",
+            confirmText: "",
+            steps: [
+              {
+                type: "user",
+                delay: 0,
+                waitForEvent: "",
+                op: "remove_tag",
+                key: "",
+                val: `"map:main"`,
+                elementId: "",
+                userSelector: "__CURRENT_USER__",
+                generated: false
+              },
+              {
+                type: "user",
+                delay: 0,
+                waitForEvent: "",
+                op: "add_tag",
+                key: "",
+                val: `"map:${event.overlay}"`,
+                elementId: "",
+                userSelector: "__CURRENT_USER__",
+                generated: false
+              }
+            ]
+          });
+          console.log(action);
+          promise4 = ohyay.updateElement(button_id, {action, tags: {show: true}});
+        } else {
+          promise3 = ohyay.updateElement(button_id, {tags: {show: false}});
+        }
       }
 
-      let [response1, response2, response3] = await Promise.all([promise1, promise2, promise3]);
-      if (!response1 || !response2 || !response3) {
-        throw `Update to preview failed`;
+      let [response1, response2, response3, response4] = await Promise.all([promise1, promise2, promise3, promise4]);
+      if (!response1 || !response2 || !response3 || !response4) {
+        console.error(`Update to preview failed`);
       }
     };
 
