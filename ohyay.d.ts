@@ -21,6 +21,10 @@ interface Window {
     // Add a new room to the workspace. Returns the id of the new room.
     addRoom(data: Partial<Room>): Promise<string>;
 
+    // Copies the specified elements in sourceRoomId to destRoomId, updating room and element
+    // refs as needed (using the same logic as copy/paste in ohyay studio)
+    cloneElements(sourceRoomId: string, elementIds: string[], destRoomId: string): Promise<string[]>
+
     getCurrentRoomId(): Promise<string>;
 
     getCurrentUserId(): Promise<string>;
@@ -14471,6 +14475,10 @@ interface Element_web_media {
 
 interface Room {
   id: string;
+
+  elements: {[key:string]: AnyElement};
+
+  orderIndex: number;
 
   // Allow participants to paint on the room
   allowPainting: boolean;
