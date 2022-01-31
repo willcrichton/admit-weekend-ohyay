@@ -13,6 +13,8 @@ let container_div = document.getElementById('container');
 async function main() {
   let current_room_id = await ohyay.getCurrentRoomId();
   let rooms: Room[] = await ohyay.getRooms();
+  let current_user_id = await ohyay.getCurrentUserId();
+  let current_user = await ohyay.getUser(current_user_id);
 
   let find_room = (query: any) => {
     let room = _.find(rooms, query);
@@ -35,6 +37,8 @@ async function main() {
   callbacks[current_room.title]();
 
   async function map() {
+    if (current_user!.name != 'Will Crichton') { return; }
+
     let schedule = {
       friday: [
         {
@@ -62,13 +66,13 @@ async function main() {
           title: 'Meetings with faculty',
         },
         {
-          start: '17:30',
-          end: '18:30',
+          start: '17:00',
+          end: '18:20',
           room: 'Reception - Hub',
           title: 'Department Reception',
         },
         {
-          start: '18:30',
+          start: '18:20',
           end: '23:59',
           room: 'Evening Social - Hub',
           title: 'Social Events',
@@ -76,37 +80,37 @@ async function main() {
       ],
       saturday: [
         {
-          start: '10:00',
-          end: '11:00',
+          start: '09:45',
+          end: '10:55',
           room: 'Panel - Student Q&A',
           title: 'Student Q&A'
         },
         {
-          start: '11:00',
+          start: '10:55',
           end: '11:30',
           room: 'Housing Tour - Hub',
           title: 'Housing Tour'
         },
         {
-          start: '12:00',
-          end: '13:00',
+          start: '11:55',
+          end: '12:55',
           room: 'Women in CS Social',
           title: 'Women in CS Social'
         },
         {
-          start: '13:00',
-          end: '17:00',
+          start: '12:55',
+          end: '16:55',
           room: 'Meetings - Hub',
           title: 'Meetings with faculty',
         },
         {
-          start: '17:00',
-          end: '18:00',
+          start: '16:55',
+          end: '17:55',
           room: 'Inclusion in CS Social',
           title: 'Inclusion in CS Social',
         },
         {
-          start: '18:00',
+          start: '17:55',
           end: '23:59',
           room: 'Saturday Social - Hub',
           title: 'Research Area Socials'
@@ -116,11 +120,11 @@ async function main() {
 
     let parse_time = (s: string) => DateTime.fromISO(s, {zone: 'America/Los_Angeles'});
 
-    //let response = await axios.get('https://mindover.computer/api/time');
-    //let now = DateTime.fromSeconds(response.data).setZone('America/Los_Angeles');
-    let now = parse_time('17:31');
+    let response = await axios.get('https://mindover.computer/api/time');
+    let now = DateTime.fromSeconds(response.data).setZone('America/Los_Angeles');
+    //let now = parse_time('11:35');
 
-    let todays_events = now.weekdayLong == "Saturday" && false ? schedule.saturday : schedule.friday;
+    let todays_events = now.weekdayLong == "Saturday" ? schedule.saturday : schedule.friday;
 
     let pivot = _.findIndex(todays_events, event => parse_time(event.end) > now);
     let prev = pivot > 0 ? todays_events[pivot - 1] : null;
@@ -217,8 +221,7 @@ async function main() {
           custom: true
         },
         {
-          names: ['Alex Aiken', 'Monica Lam'],
-          custom: true
+          names: ['Alex Aiken'],
         },
         {
           names: ['James Landay', 'John Mitchell']
@@ -240,27 +243,34 @@ async function main() {
         {
           names: ['Chris Manning'],
         },
-        {
+        /*{
           names: ['Kayvon Fatahalian'],
           custom: true
-        },
+        },*/
         {
           names: ['Gordon Wetzstein']
         },
         {
           names: ['Don Knuth'],
           custom: true
-        }
+        },
+        {
+          names: ['Monica Lam'],
+          custom: true
+        },
+        {
+          names: ['Teaching Faculty']
+        },
       ];
 
-      let num_room_templates = 2;
+      let num_room_templates = 5;
 
       let ncols = 6;
       let width = 180;
       let height = 48;
       let margin = 12;
       let offset = {x: 61, y: 240};
-      let dynamic_slots = 0; // 23
+      let dynamic_slots = 22;
 
       let dynamic_faculty = _.range(dynamic_slots).map(i => ({dynamic: true}));
 
@@ -293,6 +303,7 @@ async function main() {
              let template_room = find_room({title: template_title});
 
              // Create new room from template
+             let navigationParentSceneId = find_room({title: 'Reception - Hub'}).id;
              let room_idx = row * ncols + col;
              let new_template =
                _.chain({})
@@ -300,6 +311,8 @@ async function main() {
                 .merge({
                   title: `Reception - Generated ${room_idx}`,
                   orderIndex: max_order_index + room_idx,
+                  navigationParentSceneId,
+                  walkable: false
                 })
                 .value() as any;
              delete new_template.id;
@@ -323,12 +336,13 @@ async function main() {
 
              let sceneIds = {[room_id]: true};
              let linkUrl = `#${room_id}`;
+             let linkedSceneId = room_id;
 
              if ((faculty as any).dynamic) {
                let tags = {dynamic_button_template: false};
                return stamp_instance(dynamic_template, pos, {
-                 Count: {tags, sceneIds, linkUrl},
-                 Faculty: {tags, sceneIds, linkUrl},
+                 Count: {tags, sceneIds, linkUrl, linkedSceneId},
+                 Faculty: {tags, sceneIds, linkUrl, linkedSceneId},
                  Background: {tags, linkUrl},
                });
              } else if (faculty.names.length == 1) {
@@ -339,7 +353,7 @@ async function main() {
                    text: faculty.names[0] + '\n ',
                    tags, linkUrl
                  },
-                 FacultySlot: { sceneIds, tags, linkUrl }
+                 FacultySlot: { sceneIds, tags, linkUrl, linkedSceneId }
                });
              } else {
                let tags = {static_button_template: false}
@@ -347,7 +361,7 @@ async function main() {
                  Count: { sceneIds, tags, linkUrl },
                  Faculty: {
                    text: _.sortBy(faculty.names).join('\n'),
-                   tags, linkUrl
+                   tags, linkUrl, linkedSceneId
                  }
                });
              }
@@ -357,13 +371,14 @@ async function main() {
 
       await Promise.all(promises);
 
-      // Update audio mixers to adjacent rooms
+      // Update room audio mixers to all rooms
       let N = promises.length;
       await Promise.all(_.range(N).map(idx => {
-        let other_idxs = [-2, -1, 1, 2].map(di => ((idx + di) % N + N) % N);
+        //let other_idxs = [-2, -1, 1, 2].map(di => ((idx + di) % N + N) % N);
+        let other_idxs = _.range(N);
+        other_idxs.splice(idx, 1);
         let sceneIds =
           _.fromPairs(other_idxs.map(other_idx => [room_ids[other_idx], true]));
-        console.log(mixer_ids[idx], sceneIds);
         return ohyay.updateElement(mixer_ids[idx], {sceneIds});
       }));
 
